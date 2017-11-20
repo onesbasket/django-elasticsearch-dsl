@@ -42,13 +42,27 @@ class BaseSignalProcessor(object):
         """
         # Do nothing.
 
+    def handle_m2m_changed(self, sender, instance, action, **kwargs):
+        if action in [
+            'post_add', 'post_remove', 'post_clear'
+        ]:
+            self.handle_save(sender, instance=instance)
+
     def handle_save(self, sender, **kwargs):
         """Handle save.
 
         Given an individual model instance, update the object in the index.
+        Update the related objects either.
         """
         instance = kwargs['instance']
         registry.update(instance)
+        registry.update_related(instance)
+
+    def handle_pre_delete(self, sender, **kwargs):
+        instance = kwargs['instance']
+        registry.update_related(
+            instance, action='delete', raise_on_error=False
+        )
 
     def handle_delete(self, sender, **kwargs):
         """Handle delete.
@@ -71,7 +85,12 @@ class RealTimeSignalProcessor(BaseSignalProcessor):
         models.signals.post_save.connect(self.handle_save)
         models.signals.post_delete.connect(self.handle_delete)
 
+        # Use to manage related objects update
+        models.signals.m2m_changed.connect(self.handle_m2m_changed)
+        models.signals.pre_delete.connect(self.handle_pre_delete)
+
     def teardown(self):
         # Listen to all model saves.
         models.signals.post_save.disconnect(self.handle_save)
         models.signals.post_delete.disconnect(self.handle_delete)
+        models.signals.m2m_changed.disconnect(self.handle_m2m_changed)
